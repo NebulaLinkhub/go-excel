@@ -11,7 +11,7 @@ type Person struct {
 
 func TestExcel_ExportToFile(t *testing.T) {
 	people := []Person{{Name: "Jason", Age: 20}, {Name: "Jack", Age: 25}}
-	err := New("人员信息", "人员").ExportToFile(&people)
+	err := New("people", "people").ExportToFile(&people)
 	if err != nil {
 		t.Error(err)
 	}

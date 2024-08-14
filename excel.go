@@ -4,8 +4,12 @@ import (
 	"bufio"
 	"bytes"
 	"errors"
+	"fmt"
+	"io"
 	"reflect"
 	"strconv"
+	"strings"
+	"text/template"
 	"time"
 
 	"github.com/xuri/excelize/v2"
@@ -25,6 +29,7 @@ type Excel struct {
 	RowStyle excelize.Style
 	File     *excelize.File
 	Sw       *excelize.StreamWriter
+	Data     any
 }
 
 func New(sheetName, title string) *Excel {
@@ -188,6 +193,128 @@ func (e *Excel) SetValue(rv reflect.Value) error {
 		return err
 	}
 	return nil
+}
+
+func (e *Excel) report() error {
+	defer func() {
+		if err := e.File.Close(); err != nil {
+			return
+		}
+	}()
+
+	sheets := e.File.GetSheetList()
+
+	for _, sheet := range sheets {
+		rows, err := e.File.GetRows(sheet)
+		if err != nil {
+			return fmt.Errorf("获取工作表 %s 的行失败: %w", sheet, err)
+		}
+		rowOffset := 0
+		for rowIndex, row := range rows {
+			for colIndex, cell := range row {
+				if strings.Contains(cell, "{{range") {
+					rangeOffset := rowOffset
+					rangeValues, err := e.processRangeTemplate(cell)
+					if err != nil {
+						return fmt.Errorf("处理range模板失败: %w", err)
+					}
+					for i, value := range rangeValues {
+						cellName, err := excelize.CoordinatesToCellName(colIndex+1, rowIndex+rangeOffset+i+1)
+						if err != nil {
+							return fmt.Errorf("转换单元格坐标失败: %w", err)
+						}
+						if err := e.File.SetCellValue(sheet, cellName, value); err != nil {
+							return fmt.Errorf("设置单元格值失败: %w", err)
+						}
+					}
+					rangeOffset += len(rangeValues) - 1
+				} else if strings.Contains(cell, "{{") && strings.Contains(cell, "}}") {
+					processedValue, err := e.processCellTemplate(cell)
+					if err != nil {
+						return fmt.Errorf("处理单元格模板失败: %w", err)
+					}
+
+					cellName, err := excelize.CoordinatesToCellName(colIndex+1, rowIndex+rowOffset+1)
+					if err != nil {
+						return fmt.Errorf("转换单元格坐标失败: %w", err)
+					}
+					if err := e.File.SetCellValue(sheet, cellName, processedValue); err != nil {
+						return fmt.Errorf("设置单元格值失败: %w", err)
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (e *Excel) ReportFromFile(filePath string, data any) {
+	e.File, _ = excelize.OpenFile(filePath)
+	e.Data = data
+}
+
+func (e *Excel) ReportFromBytes(reader io.Reader, data any) {
+	e.File, _ = excelize.OpenReader(reader)
+	e.Data = data
+}
+
+func (e *Excel) ReportToFile(outputFile string) error {
+	err := e.report()
+	if err != nil {
+		return err
+	}
+	if err := e.File.SaveAs(outputFile); err != nil {
+		return fmt.Errorf("保存输出文件失败: %w", err)
+	}
+	return nil
+}
+
+func (e *Excel) ReportToBytes() ([]byte, error) {
+	err := e.report()
+	if err != nil {
+		return nil, err
+	}
+	b := bytes.Buffer{}
+	writer := bufio.NewWriter(&b)
+	e.File.Write(writer)
+	return b.Bytes(), nil
+}
+
+func (e *Excel) processCellTemplate(cellContent string) (string, error) {
+	tmpl, err := template.New("cell").Parse(cellContent)
+	if err != nil {
+		return "", fmt.Errorf("解析单元格模板失败: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, e.Data); err != nil {
+		return "", fmt.Errorf("执行单元格模板失败: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
+func (e *Excel) processRangeTemplate(cellContent string) ([]string, error) {
+	tmpl, err := template.New("range").Parse(cellContent)
+	if err != nil {
+		return nil, fmt.Errorf("解析range模板失败: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, e.Data); err != nil {
+		return nil, fmt.Errorf("执行range模板失败: %w", err)
+	}
+
+	// 分割结果，去除空行
+	values := strings.Split(buf.String(), "\n")
+	var result []string
+	for _, v := range values {
+		if strings.TrimSpace(v) != "" {
+			result = append(result, strings.TrimSpace(v))
+		}
+	}
+
+	return result, nil
 }
 
 func numberToLetters(num int) (string, error) {
