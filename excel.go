@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"reflect"
 	"strconv"
 	"strings"
 	"text/template"
 	"time"
 
+	"github.com/spf13/cast"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -25,20 +27,35 @@ type Options struct {
 
 type Excel struct {
 	Fields   map[string]*Column // 字段名称 / 字段
+	Rows     map[string]*Column // 字段表格显示名/ 字段
 	Option   Options
+	ModelRt  reflect.Type
 	RowStyle excelize.Style
 	File     *excelize.File
 	Sw       *excelize.StreamWriter
 	Data     any
 }
 
-func New(sheetName, title string) *Excel {
-	return &Excel{
-		Option: Options{
-			SheetName: sheetName,
-			Title:     title,
-		},
+type Option interface {
+	apply(options *Options)
+}
+
+type DefaultOption struct {
+	SheetName string
+	Title     string
+}
+
+func (d *DefaultOption) apply(options *Options) {
+	options.SheetName = d.SheetName
+	options.Title = d.Title
+}
+
+func New(opts ...Option) *Excel {
+	opt := Options{}
+	for _, option := range opts {
+		option.apply(&opt)
 	}
+	return &Excel{Option: opt}
 }
 
 func (e *Excel) defaultStyle() {
@@ -56,11 +73,10 @@ func (e *Excel) defaultStyle() {
 }
 
 func (e *Excel) export(data any) error {
-	columnMap, err := getField(data)
+	err := e.getField(data)
 	if err != nil {
 		return err
 	}
-	e.Fields = columnMap
 	e.File = excelize.NewFile()
 	index, err := e.File.NewSheet(e.Option.SheetName)
 	if err != nil {
@@ -139,6 +155,96 @@ func (e *Excel) GetEntityInfo(data any) (reflect.Value, bool) {
 	default:
 		return rv, false
 	}
+}
+
+func (e *Excel) Import(data []byte, result any) error {
+	r := bytes.NewReader(data)
+	f, err := excelize.OpenReader(r)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	err = e.getField(result)
+	if err != nil {
+		return err
+	}
+	resv := reflect.ValueOf(result)
+	// 获取切片的值和元素类型
+	sliceValue := resv.Elem()
+	elemType := sliceValue.Type().Elem()
+	// 如果切片元素是指针类型，获取指针指向的结构体类型
+	isPtr := false
+	if elemType.Kind() == reflect.Ptr {
+		elemType = elemType.Elem()
+		isPtr = true
+	}
+
+	rows, err := f.Rows(e.Option.SheetName)
+	if err != nil {
+		return err
+	}
+
+	count, skip := 0, 0
+	if e.Option.ShowRemind {
+		skip = 3
+	} else {
+		skip = 2
+	}
+
+	// 行迭代
+	for rows.Next() {
+		count++
+		// 提取字段索引
+		if count == 2 {
+			row, err := rows.Columns()
+			if err != nil {
+				return err
+			}
+			for k, colCell := range row {
+				if _, ok := e.Rows[colCell]; ok {
+					e.Rows[colCell].Col, _ = numberToLetters(k + 1)
+				}
+			}
+		}
+
+		if skip >= count {
+			continue
+		}
+		newElem := reflect.New(elemType).Elem()
+
+		cell := strconv.Itoa(count)
+		for _, v := range e.Rows {
+			val, err := f.GetCellValue(e.Option.SheetName, v.Col+cell)
+			if err != nil {
+				return err
+			}
+			metaValue := convertStringToType(val, v.FieldType)
+
+			field := newElem.FieldByName(v.Field)
+
+			if !field.IsValid() {
+				return errors.New("field is not valid")
+			}
+
+			if !field.CanSet() {
+				return errors.New("field is not settable")
+			}
+			// 将值赋给字段
+			vals := reflect.ValueOf(metaValue)
+			if !vals.Type().AssignableTo(field.Type()) {
+				return errors.New("cannot assign value of type")
+			}
+			field.Set(vals)
+			log.Println(field.Interface())
+		}
+		if isPtr {
+			newElem = newElem.Addr()
+		}
+		log.Println(newElem.Interface())
+		// 将新元素追加到切片
+		sliceValue.Set(reflect.Append(sliceValue, newElem))
+	}
+	return nil
 }
 
 func (e *Excel) SetValue(rv reflect.Value) error {
@@ -349,18 +455,40 @@ func refType(value any) (val any, is bool) {
 	case reflect.Struct:
 		return value, true
 	case reflect.Ptr:
-		if rv.IsNil() {
-			return nil, false
-		}
 		return refType(rv.Elem().Interface())
-
 	case reflect.Slice:
-		if rv.Len() > 0 {
-			elem := rv.Index(0).Interface()
-			return refType(elem)
+		if rv.Len() == 0 {
+			nv := rv.Type().Elem()
+			if rv.Type().Elem().Kind() == reflect.Ptr {
+				nv = nv.Elem()
+			}
+			rv = reflect.New(nv).Elem()
+			return refType(rv.Interface())
 		}
-		return nil, false
+		return refType(rv.Index(0))
 	default:
 		return nil, false
+	}
+}
+
+func convertStringToType(val string, typ reflect.Type) any {
+	switch typ.Kind() {
+	case reflect.String:
+		return cast.ToString(val)
+	case reflect.Int64:
+		return cast.ToInt64(val)
+	case reflect.Int:
+		return cast.ToInt(val)
+	case reflect.Bool:
+		return cast.ToBool(val)
+	case reflect.Float64:
+		return cast.ToFloat64(val)
+	case reflect.Struct:
+		if reflect.TypeOf(time.Time{}) == typ {
+			return cast.ToTimeInDefaultLocation(val, time.Local)
+		}
+		return val
+	default:
+		return reflect.Zero(typ).Interface()
 	}
 }

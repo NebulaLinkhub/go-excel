@@ -17,15 +17,17 @@ type Column struct {
 	Index       int // 索引
 	ExportFunc  Parser
 	ImportFunc  Parser
+	Col         string // 列索引
 }
 
-func getField(data any) (fieldsMap map[string]*Column, err error) {
+func (e *Excel) getField(data any) error {
 	val, is := refType(data)
 	if !is {
-		return nil, errors.New("model type err")
+		return errors.New("model type err")
 	}
 	rt := reflect.TypeOf(val)
-	fieldsMap = make(map[string]*Column)
+	fieldsMap := make(map[string]*Column)
+	rowsMap := make(map[string]*Column)
 	index := 0
 	for i := 0; i < rt.NumField(); i++ {
 		tagName := rt.Field(i).Tag.Get("excel")
@@ -43,9 +45,14 @@ func getField(data any) (fieldsMap map[string]*Column, err error) {
 		filed.FieldType = rt.Field(i).Type
 		filed.Index = index
 		fieldsMap[rt.Field(i).Name] = filed
+		rowsMap[tags[0]] = filed
+
 		index++
 	}
-	return fieldsMap, nil
+	e.Rows = rowsMap
+	e.Fields = fieldsMap
+	e.ModelRt = rt
+	return nil
 }
 
 func getFiledMap(tags []string) map[string]struct{} {
