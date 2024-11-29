@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"reflect"
 	"strconv"
 	"strings"
@@ -214,6 +213,9 @@ func (e *Excel) Import(data []byte, result any) error {
 
 		cell := strconv.Itoa(count)
 		for _, v := range e.Rows {
+			if v.Col == "" {
+				continue
+			}
 			val, err := f.GetCellValue(e.Option.SheetName, v.Col+cell)
 			if err != nil {
 				return err
@@ -235,12 +237,10 @@ func (e *Excel) Import(data []byte, result any) error {
 				return errors.New("cannot assign value of type")
 			}
 			field.Set(vals)
-			log.Println(field.Interface())
 		}
 		if isPtr {
 			newElem = newElem.Addr()
 		}
-		log.Println(newElem.Interface())
 		// 将新元素追加到切片
 		sliceValue.Set(reflect.Append(sliceValue, newElem))
 	}
