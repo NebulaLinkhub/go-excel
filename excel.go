@@ -465,7 +465,7 @@ func refType(value any) (val any, is bool) {
 			rv = reflect.New(nv).Elem()
 			return refType(rv.Interface())
 		}
-		return refType(rv.Index(0))
+		return refType(rv.Index(0).Interface())
 	default:
 		return nil, false
 	}
