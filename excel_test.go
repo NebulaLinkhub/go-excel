@@ -12,7 +12,7 @@ type Person struct {
 }
 
 func TestExcel_ExportToFile(t *testing.T) {
-	people := []Person{{Name: "Jason", Age: 20}, {Name: "Jack", Age: 25}}
+	people := []Person{{Name: "Jason", Age: 20}, {Name: "Jackson", Age: 25}}
 	err := New(&DefaultOption{
 		SheetName: "Ye",
 		Title:     "Y01",
@@ -191,5 +191,24 @@ func TestExcel_processRangeTemplate(t *testing.T) {
 			}
 			t.Logf("%+v", got)
 		})
+	}
+}
+
+func TestExcel_ExportToBytes(t *testing.T) {
+	people := []Person{{Name: "Jason", Age: 20}, {Name: "Jackson", Age: 25}}
+	dataBuf, err := New(&DefaultOption{
+		SheetName: "Ye",
+		Title:     "Y01",
+	}).ExportToBytes(&people)
+	if err != nil {
+		t.Error(err)
+	}
+	file, err := os.Create("test.xlsx")
+	if err != nil {
+		t.Error(err)
+	}
+	_, err = file.Write(dataBuf)
+	if err != nil {
+		t.Error(err)
 	}
 }

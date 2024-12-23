@@ -121,10 +121,12 @@ func (e *Excel) ExportToBytes(data any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	b := bytes.Buffer{}
-	writer := bufio.NewWriter(&b)
-	e.File.Write(writer)
-	return b.Bytes(), nil
+	buf, err := e.File.WriteToBuffer()
+	if err != nil {
+		return nil, err
+	}
+	buf.Bytes()
+	return buf.Bytes(), nil
 }
 
 func (e *Excel) ExportToFile(data any) error {
