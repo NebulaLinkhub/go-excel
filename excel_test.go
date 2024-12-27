@@ -195,6 +195,10 @@ func TestExcel_processRangeTemplate(t *testing.T) {
 }
 
 func TestExcel_ExportToBytes(t *testing.T) {
+	type Person struct {
+		Name string `excel:"姓名"`
+		Age  int    `excel:"年龄"`
+	}
 	people := []Person{{Name: "Jason", Age: 20}, {Name: "Jackson", Age: 25}}
 	dataBuf, err := New(&DefaultOption{
 		SheetName: "Ye",

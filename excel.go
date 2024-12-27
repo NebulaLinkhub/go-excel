@@ -125,7 +125,6 @@ func (e *Excel) ExportToBytes(data any) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	buf.Bytes()
 	return buf.Bytes(), nil
 }
 
@@ -423,6 +422,24 @@ func (e *Excel) processRangeTemplate(cellContent string) ([]string, error) {
 	}
 
 	return result, nil
+}
+
+func (e *Excel) setImage(cell string, file []byte) error {
+	return e.File.AddPictureFromBytes(e.Option.SheetName, cell, &excelize.Picture{
+		Extension: ".jpg",
+		File:      file,
+	})
+}
+
+func (e *Excel) getImage(cell string) []byte {
+	pics, err := e.File.GetPictures(e.Option.SheetName, cell)
+	if err != nil {
+		fmt.Println(err)
+	}
+	if len(pics) > 0 {
+		return pics[0].File
+	}
+	return nil
 }
 
 func numberToLetters(num int) (string, error) {
