@@ -7,12 +7,15 @@ import (
 )
 
 type Person struct {
-	Name string `excel:"姓名"`
-	Age  int    `excel:"年龄"`
+	Name  string `excel:"姓名"`
+	Age   int    `excel:"年龄"`
+	Avtar string `excel:"头像地址 img"`
 }
 
 func TestExcel_ExportToFile(t *testing.T) {
-	people := []Person{{Name: "Jason", Age: 20}, {Name: "Jackson", Age: 25}}
+	people := []Person{{Name: "Jason", Age: 20},
+		{Name: "Jackson", Age: 25,
+			Avtar: "https://erp.marchmetal.top/cdn/6,c19457c1f9"}}
 	err := New(&DefaultOption{
 		SheetName: "Ye",
 		Title:     "Y01",

@@ -14,6 +14,10 @@ import (
 
 	"github.com/spf13/cast"
 	"github.com/xuri/excelize/v2"
+
+	_ "image/gif"
+	_ "image/jpeg"
+	_ "image/png"
 )
 
 type Options struct {
@@ -273,6 +277,20 @@ func (e *Excel) SetValue(rv reflect.Value) error {
 				if !rfval.IsZero() {
 					x := rfval.Interface()
 					cellValue = x
+					if e.Fields[col].IsImage {
+						// 处理图片字段
+						imgPath := rfval.String()
+						imgData, err := ReadFile(imgPath)
+						if err == nil {
+							err = e.setImage(cell, imgData.Extension, imgData.Data)
+							if err != nil {
+								fmt.Printf("Failed to set image: %v\n", err)
+							}
+						}
+						cellValue = "" // 图片单元格内容置空
+						continue
+					}
+
 					if e.Fields[col].FieldType == reflect.TypeOf(time.Time{}) {
 						cellTime := cellValue.(time.Time)
 						cellValue = cellTime.Format("2006-01-02 15:04:05")
@@ -424,10 +442,14 @@ func (e *Excel) processRangeTemplate(cellContent string) ([]string, error) {
 	return result, nil
 }
 
-func (e *Excel) setImage(cell string, file []byte) error {
+func (e *Excel) setImage(cell, extension string, file []byte) error {
 	return e.File.AddPictureFromBytes(e.Option.SheetName, cell, &excelize.Picture{
-		Extension: ".jpg",
+		Extension: extension,
 		File:      file,
+		Format: &excelize.GraphicOptions{
+			AutoFit:         true,
+			LockAspectRatio: true,
+		},
 	})
 }
 

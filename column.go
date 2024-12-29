@@ -18,6 +18,7 @@ type Column struct {
 	ExportFunc  Parser
 	ImportFunc  Parser
 	Col         string // 列索引
+	IsImage     bool   // 新增图片标识
 }
 
 func (e *Excel) getField(data any) error {
@@ -46,6 +47,14 @@ func (e *Excel) getField(data any) error {
 		filed.Index = index
 		fieldsMap[rt.Field(i).Name] = filed
 		rowsMap[tags[0]] = filed
+
+		// 检查是否包含 img 属性
+		for _, tag := range tags {
+			if tag == "img" {
+				filed.IsImage = true
+				break
+			}
+		}
 
 		index++
 	}
